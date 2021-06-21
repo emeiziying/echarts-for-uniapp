@@ -122,7 +122,7 @@ export default {
   onLoad() {},
   methods: {
     onInited(chart) {
-      console.log(chart);
+      //   console.log(chart);
     },
   },
 };
@@ -130,7 +130,7 @@ export default {
 
 <style>
 .content {
-  width: 100%;
-  height: 100%;
+  width: 750rpx;
+  height: 750rpx;
 }
 </style>
