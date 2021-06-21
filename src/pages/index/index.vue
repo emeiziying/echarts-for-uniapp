@@ -1,6 +1,6 @@
 <template>
   <view class="content">
-    <uni-echarts />
+    <uni-echarts :ec="ec" @inited="onInited" />
   </view>
 </template>
 
@@ -120,7 +120,11 @@ export default {
     };
   },
   onLoad() {},
-  methods: {},
+  methods: {
+    onInited(chart) {
+      console.log(chart);
+    },
+  },
 };
 </script>
 
