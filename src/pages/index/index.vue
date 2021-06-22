@@ -1,10 +1,16 @@
 <template>
-  <view class="content">
+  <view
+    class="content"
+    :style="{
+      height: `${canvasHeight}px`,
+    }"
+  >
     <uni-echarts :ec="ec" @inited="onInited" />
   </view>
 </template>
 
 <script>
+let chart = null;
 export default {
   data() {
     return {
@@ -117,12 +123,34 @@ export default {
           ],
         },
       },
+      canvasHeight: 375,
     };
   },
   onLoad() {},
+  watch: {
+    canvasHeight(v) {
+      console.log(v, chart);
+      if (chart) {
+        const width = chart.getWidth();
+
+        console.log(width);
+
+        chart.resize({
+          width,
+          height: v,
+        });
+      }
+    },
+  },
   methods: {
-    onInited(chart) {
+    onInited(e) {
+      console.log('inited', e);
       //   console.log(chart);
+      chart = e;
+
+      // setTimeout(() => {
+      //   this.canvasHeight = 200;
+      // }, 1000);
     },
   },
 };

@@ -10,8 +10,8 @@
       class="ec-canvas"
       :canvas-id="canvasId"
       :id="canvasId"
-      :width="width"
-      :height="height"
+      :width="canvasWidth"
+      :height="canvasHeight"
     />
   </view>
 </template>
@@ -30,6 +30,8 @@ function wrapTouch(event) {
   return event;
 }
 
+let chart = null;
+
 export default {
   props: {
     canvasId: {
@@ -45,25 +47,14 @@ export default {
       type: Boolean,
       value: false,
     },
-    width: {
-      type: Number,
-      default: 750,
-    },
-    height: {
-      type: Number,
-      default: 750,
-    },
   },
   data() {
     return {
       $curChart: {},
       toHandleList: [],
       isUseNewCanvas: true,
-      w0: 0,
-      h0: 0,
-      size: {
-        w: 0,
-      },
+      canvasWidth: 0,
+      canvasHeight: 0,
     };
   },
   watch: {
@@ -81,20 +72,29 @@ export default {
     if (!this.ec.lazyLoad) {
       this.init();
     }
+
+    // this.w0 = 100;
+
+    console.log(this);
   },
   beforeDestroy() {
-    this.$curChart && this.$curChart.dispose();
+    chart && chart.dispose();
   },
   computed: {
     ww() {
       return this.w0;
     },
     hh() {
-      return this.$curChart ? this.$curChart.height : 0;
+      return chart ? chart.height : 0;
     },
   },
   methods: {
     toJson() {},
+    updateSize(w, h) {
+      console.log(w, h);
+      this.w0 = w;
+      this.h0 = h;
+    },
     compareVersion(v1, v2) {
       v1 = v1.split('.');
       v2 = v2.split('.');
@@ -127,9 +127,7 @@ export default {
       echarts.setCanvasCreator(() => {
         return canvas;
       });
-      //   const canvasDpr = uni.getSystemInfoSync().pixelRatio; // 微信旧的canvas不能传入dpr
-      const canvasDpr = 2;
-      //   console.log(canvasDpr);
+      const canvasDpr = uni.getSystemInfoSync().pixelRatio; // 微信旧的canvas不能传入dpr
       var query = uni.createSelectorQuery().in(this);
       query
         .select('.ec-canvas')
@@ -137,11 +135,11 @@ export default {
           const canvasWidth = res.width;
           const canvasHeight = res.height;
 
-          if (typeof callback === 'function') {
-            this.w0 = canvasWidth * 2;
-            this.h0 = canvasHeight * 2;
+          this.canvasWidth = canvasWidth * canvasDpr;
+          this.canvasHeight = canvasHeight * canvasDpr;
 
-            that.$curChart = callback({
+          if (typeof callback === 'function') {
+            chart = callback({
               echarts,
               canvas,
               canvasWidth,
@@ -149,15 +147,10 @@ export default {
               canvasDpr,
             });
           } else if (that.ec) {
-            // this.w0 = canvasWidth * canvasDpr;
-            // this.h0 = canvasHeight * canvasDpr;
-
-            // this.size.w = canvasWidth * canvasDpr;
-
-            that.$curChart = that.initChart(
+            chart = that.initChart(
               canvas,
-              res.width,
-              res.height,
+              canvasWidth,
+              canvasHeight,
               canvasDpr
             );
           } else {
@@ -192,7 +185,7 @@ export default {
             return canvas;
           });
           if (typeof callback === 'function') {
-            that.$curChart = callback({
+            chart = callback({
               echarts,
               canvas,
               canvasWidth,
@@ -200,10 +193,7 @@ export default {
               canvasDpr,
             });
           } else if (that.ec) {
-            this.w0 = canvasWidth * 2;
-            this.h0 = canvasHeight * 2;
-
-            that.$curChart = that.initChart(
+            chart = that.initChart(
               canvas,
               canvasWidth,
               canvasHeight,
@@ -220,10 +210,10 @@ export default {
         });
     },
     setOption(val) {
-      if (!this.$curChart || !this.$curChart.setOption) {
+      if (!chart || !chart.setOption) {
         this.toHandleList.push(val);
       } else {
-        this.$curChart.setOption(val);
+        chart.setOption(val);
       }
     },
     canvasToTempFilePath(opt) {
@@ -258,7 +248,7 @@ export default {
         return;
       }
       this.$emit('touchstart', e);
-      if (this.$curChart && e.touches.length > 0) {
+      if (chart && e.touches.length > 0) {
         var touch = e.touches[0];
 
         const {
@@ -267,7 +257,7 @@ export default {
         touch.x = touch.pageX - offsetLeft;
         touch.y = touch.pageY - offsetTop;
 
-        var handler = this.$curChart.getZr().handler;
+        var handler = chart.getZr().handler;
         if (handler) {
           handler.dispatch('mousedown', {
             zrX: touch.x,
@@ -288,7 +278,7 @@ export default {
         return;
       }
       this.$emit('touchmove', e);
-      if (this.$curChart && e.touches.length > 0) {
+      if (chart && e.touches.length > 0) {
         var touch = e.touches[0];
 
         const {
@@ -297,7 +287,7 @@ export default {
         touch.x = touch.pageX - offsetLeft;
         touch.y = touch.pageY - offsetTop;
 
-        var handler = this.$curChart.getZr().handler;
+        var handler = chart.getZr().handler;
         if (handler) {
           handler.dispatch('mousemove', {
             zrX: touch.x,
@@ -314,7 +304,7 @@ export default {
         return;
       }
       this.$emit('touchend', e);
-      if (this.$curChart) {
+      if (chart) {
         const touch = e.changedTouches ? e.changedTouches[0] : {};
 
         const {
@@ -323,7 +313,7 @@ export default {
         touch.x = touch.pageX - offsetLeft;
         touch.y = touch.pageY - offsetTop;
 
-        var handler = this.$curChart.getZr().handler;
+        var handler = chart.getZr().handler;
         if (handler) {
           handler.dispatch('mouseup', {
             zrX: touch.x,
@@ -343,19 +333,16 @@ export default {
       return;
     },
     initChart(canvas, width, height, canvasDpr) {
-      this.$curChart = echarts.init(canvas, null, {
+      chart = echarts.init(canvas, null, {
         width: width,
         height: height,
         devicePixelRatio: canvasDpr,
       });
-      canvas.setChart(this.$curChart);
-      this.$curChart.setOption(this.ec.option);
-      this.$emit('inited', this.$curChart);
+      canvas.setChart(chart);
+      chart.setOption(this.ec.option);
+      this.$emit('inited', chart);
 
-      //   this.$curChart.width = width * canvasDpr;
-      //   this.$curChart.height = height * canvasDpr;
-
-      return this.$curChart;
+      return chart;
     },
   },
 };
@@ -369,8 +356,8 @@ export default {
 }
 
 .ec-canvas {
-  width: 750rpx;
-  height: 750rpx;
+  width: 100%;
+  height: 100%;
   display: block;
 }
 </style>
