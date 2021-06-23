@@ -1,4 +1,4 @@
-export default class WxCanvas {
+export default class EcCanvas {
   constructor(ctx, canvasId, isNew, canvasNode) {
     this.ctx = ctx;
     this.canvasId = canvasId;

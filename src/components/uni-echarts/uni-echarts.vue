@@ -1,15 +1,22 @@
 <template>
   <view
-    id="container"
     class="container"
     @touchstart="touchStart"
     @touchmove="touchMove"
     @touchend="touchEnd"
   >
     <canvas
+      type="2d"
+      v-if="isUseNewCanvas"
       class="ec-canvas"
-      :canvas-id="canvasId"
       :id="canvasId"
+      :canvas-id="canvasId"
+    />
+    <canvas
+      v-else
+      class="ec-canvas"
+      :id="canvasId"
+      :canvas-id="canvasId"
       :width="canvasWidth"
       :height="canvasHeight"
     />
@@ -17,44 +24,35 @@
 </template>
 
 <script>
-import WxCanvas from './wx-canvas';
+import EcCanvas from './ec-canvas';
 import * as echarts from './echarts.min';
-
-let ctx;
-function wrapTouch(event) {
-  for (let i = 0; i < event.touches.length; ++i) {
-    const touch = event.touches[i];
-    touch.offsetX = touch.x;
-    touch.offsetY = touch.y;
-  }
-  return event;
-}
-
-let chart = null;
 
 export default {
   props: {
     canvasId: {
       type: String,
-      default: () => {
-        return 'ec-canvas';
-      },
+      default: 'ec-canvas',
     },
     ec: {
       type: Object,
+      default: null,
     },
     forceUseOldCanvas: {
       type: Boolean,
-      value: false,
+      default: false,
+    },
+    height: {
+      type: Number,
+      default: 0,
     },
   },
   data() {
     return {
-      $curChart: {},
       toHandleList: [],
       isUseNewCanvas: true,
       canvasWidth: 0,
       canvasHeight: 0,
+      canvasDpr: 1,
     };
   },
   watch: {
@@ -64,6 +62,9 @@ export default {
         this.setOption(val);
       },
     },
+    height(v) {
+      this.canvasHeight = v * this.canvasDpr;
+    },
   },
   onReady: function() {
     if (!this.ec) {
@@ -72,29 +73,19 @@ export default {
     if (!this.ec.lazyLoad) {
       this.init();
     }
-
-    // this.w0 = 100;
-
-    console.log(this);
   },
   beforeDestroy() {
-    chart && chart.dispose();
+    this.chart && this.chart.dispose();
   },
   computed: {
     ww() {
       return this.w0;
     },
     hh() {
-      return chart ? chart.height : 0;
+      return this.chart ? this.chart.height : 0;
     },
   },
   methods: {
-    toJson() {},
-    updateSize(w, h) {
-      console.log(w, h);
-      this.w0 = w;
-      this.h0 = h;
-    },
     compareVersion(v1, v2) {
       v1 = v1.split('.');
       v2 = v2.split('.');
@@ -117,17 +108,71 @@ export default {
       return 0;
     },
     init(callback) {
+      // #ifdef MP-DINGTALK
+      this.isUseNewCanvas = false;
       this.initByOldWay(callback);
+      return;
+      // #endif
+
+      // #ifdef MP-ALIPAY
+      const version = my.SDKVersion;
+      const baseVersion = '2.7.0';
+      const lowestVersion = '1.0.0';
+      // #endif
+
+      // #ifdef MP-WEIXIN
+      const version = uni.getSystemInfoSync().SDKVersion;
+      const baseVersion = '2.9.0';
+      const lowestVersion = '1.9.91';
+      // #endif
+
+      console.log(version);
+
+      let canUseNewCanvas = this.compareVersion(version, baseVersion) >= 0;
+      if (this.forceUseOldCanvas) {
+        if (canUseNewCanvas) console.warn('开发者强制使用旧canvas,建议关闭');
+        canUseNewCanvas = false;
+      }
+      this.isUseNewCanvas = canUseNewCanvas && !this.forceUseOldCanvas;
+      if (this.isUseNewCanvas) {
+        console.log(
+          `基础库版本大于${baseVersion}，开始使用<canvas type="2d"/>`
+        );
+        // 2.9.0 可以使用 <canvas type="2d"></canvas>
+        this.initByNewWay(callback);
+      } else {
+        const isValid = this.compareVersion(version, lowestVersion) >= 0;
+        if (!isValid) {
+          console.error(
+            `基础库版本过低，需大于等于 ${lowestVersion}。` +
+              '参见：https://github.com/ecomfe/echarts-for-weixin' +
+              '#%E5%BE%AE%E4%BF%A1%E7%89%88%E6%9C%AC%E8%A6%81%E6%B1%82'
+          );
+          return;
+        } else {
+          console.warn(
+            `建议将基础库调整大于等于${baseVersion}版本。升级后绘图将有更好性能`
+          );
+          this.initByOldWay(callback);
+        }
+      }
     },
     initByOldWay(callback) {
       // 1.9.91 <= version < 2.9.0：原来的方式初始化
-      ctx = uni.createCanvasContext(this.canvasId, this);
-      const canvas = new WxCanvas(ctx, this.canvasId, false);
+      this.ctx = uni.createCanvasContext(this.canvasId, this);
+      const canvas = new EcCanvas(this.ctx, this.canvasId, false);
       const that = this;
       echarts.setCanvasCreator(() => {
         return canvas;
       });
-      const canvasDpr = uni.getSystemInfoSync().pixelRatio; // 微信旧的canvas不能传入dpr
+
+      // #ifdef MP-WEIXIN
+      const canvasDpr = 1; // 微信旧的canvas不能传入dpr
+      // #endif
+      // #ifndef MP-WEIXIN
+      const canvasDpr = uni.getSystemInfoSync().pixelRatio || 2; // 微信旧的canvas不能传入dpr
+      // #endif
+
       var query = uni.createSelectorQuery().in(this);
       query
         .select('.ec-canvas')
@@ -135,11 +180,12 @@ export default {
           const canvasWidth = res.width;
           const canvasHeight = res.height;
 
+          this.canvasDpr = canvasDpr;
           this.canvasWidth = canvasWidth * canvasDpr;
           this.canvasHeight = canvasHeight * canvasDpr;
 
           if (typeof callback === 'function') {
-            chart = callback({
+            this.chart = callback({
               echarts,
               canvas,
               canvasWidth,
@@ -147,7 +193,7 @@ export default {
               canvasDpr,
             });
           } else if (that.ec) {
-            chart = that.initChart(
+            this.chart = that.initChart(
               canvas,
               canvasWidth,
               canvasHeight,
@@ -180,12 +226,13 @@ export default {
           const canvasWidth = res[0].width;
           const canvasHeight = res[0].height;
           const ctx = canvasNode.getContext('2d');
-          const canvas = new WxCanvas(ctx, that.canvasId, true, canvasNode);
+          const canvas = new EcCanvas(ctx, that.canvasId, true, canvasNode);
+
           echarts.setCanvasCreator(() => {
             return canvas;
           });
           if (typeof callback === 'function') {
-            chart = callback({
+            this.chart = callback({
               echarts,
               canvas,
               canvasWidth,
@@ -193,7 +240,7 @@ export default {
               canvasDpr,
             });
           } else if (that.ec) {
-            chart = that.initChart(
+            this.chart = that.initChart(
               canvas,
               canvasWidth,
               canvasHeight,
@@ -210,10 +257,10 @@ export default {
         });
     },
     setOption(val) {
-      if (!chart || !chart.setOption) {
+      if (!this.chart || !this.chart.setOption) {
         this.toHandleList.push(val);
       } else {
-        chart.setOption(val);
+        this.chart.setOption(val);
       }
     },
     canvasToTempFilePath(opt) {
@@ -236,10 +283,18 @@ export default {
         if (!opt.canvasId) {
           opt.canvasId = this.canvasId;
         }
-        ctx.draw(true, () => {
+        this.ctx.draw(true, () => {
           uni.canvasToTempFilePath(opt, this);
         });
       }
+    },
+    wrapTouch(event) {
+      for (let i = 0; i < event.touches.length; ++i) {
+        const touch = event.touches[i];
+        touch.offsetX = touch.x;
+        touch.offsetY = touch.y;
+      }
+      return event;
     },
     touchStart(e) {
       if (this.ec.stopTouchEvent) {
@@ -248,7 +303,7 @@ export default {
         return;
       }
       this.$emit('touchstart', e);
-      if (chart && e.touches.length > 0) {
+      if (this.chart && e.touches.length > 0) {
         var touch = e.touches[0];
 
         const {
@@ -257,7 +312,7 @@ export default {
         touch.x = touch.pageX - offsetLeft;
         touch.y = touch.pageY - offsetTop;
 
-        var handler = chart.getZr().handler;
+        var handler = this.chart.getZr().handler;
         if (handler) {
           handler.dispatch('mousedown', {
             zrX: touch.x,
@@ -267,7 +322,7 @@ export default {
             zrX: touch.x,
             zrY: touch.y,
           });
-          handler.processGesture(wrapTouch(e), 'start');
+          handler.processGesture(this.wrapTouch(e), 'start');
         }
       }
     },
@@ -278,7 +333,7 @@ export default {
         return;
       }
       this.$emit('touchmove', e);
-      if (chart && e.touches.length > 0) {
+      if (this.chart && e.touches.length > 0) {
         var touch = e.touches[0];
 
         const {
@@ -287,13 +342,13 @@ export default {
         touch.x = touch.pageX - offsetLeft;
         touch.y = touch.pageY - offsetTop;
 
-        var handler = chart.getZr().handler;
+        var handler = this.chart.getZr().handler;
         if (handler) {
           handler.dispatch('mousemove', {
             zrX: touch.x,
             zrY: touch.y,
           });
-          handler.processGesture(wrapTouch(e), 'change');
+          handler.processGesture(this.wrapTouch(e), 'change');
         }
       }
     },
@@ -304,7 +359,7 @@ export default {
         return;
       }
       this.$emit('touchend', e);
-      if (chart) {
+      if (this.chart) {
         const touch = e.changedTouches ? e.changedTouches[0] : {};
 
         const {
@@ -313,7 +368,7 @@ export default {
         touch.x = touch.pageX - offsetLeft;
         touch.y = touch.pageY - offsetTop;
 
-        var handler = chart.getZr().handler;
+        var handler = this.chart.getZr().handler;
         if (handler) {
           handler.dispatch('mouseup', {
             zrX: touch.x,
@@ -323,7 +378,7 @@ export default {
             zrX: touch.x,
             zrY: touch.y,
           });
-          handler.processGesture(wrapTouch(e), 'end');
+          handler.processGesture(this.wrapTouch(e), 'end');
         }
       }
     },
@@ -333,16 +388,18 @@ export default {
       return;
     },
     initChart(canvas, width, height, canvasDpr) {
-      chart = echarts.init(canvas, null, {
+      console.log(width, height, canvasDpr);
+
+      this.chart = echarts.init(canvas, null, {
         width: width,
         height: height,
         devicePixelRatio: canvasDpr,
       });
-      canvas.setChart(chart);
-      chart.setOption(this.ec.option);
-      this.$emit('inited', chart);
+      canvas.setChart(this.chart);
+      this.chart.setOption(this.ec.option);
+      this.$emit('inited', this.chart);
 
-      return chart;
+      return this.chart;
     },
   },
 };
