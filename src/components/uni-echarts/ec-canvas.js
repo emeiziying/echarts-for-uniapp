@@ -84,40 +84,63 @@ export default class EcCanvas {
       return ctx.createCircularGradient(...p);
     };
 
-    ctx.measureText = function(e) {
-      return {
-        width: String(e.length) * 10,
+    // 钉钉钉钉小程序框架不支持 measureText 方法，用此方法 mock
+    if (!ctx.measureText) {
+      function strLen(str) {
+        let len = 0;
+        for (let i = 0; i < str.length; i++) {
+          if (str.charCodeAt(i) > 0 && str.charCodeAt(i) < 128) {
+            len++;
+          } else {
+            len += 2;
+          }
+        }
+        return len;
+      }
+
+      ctx.measureText = (text) => {
+        let fontSize = 12;
+        const font = ctx.__font;
+
+        if (font) {
+          fontSize = parseInt(font.split(' ')[2], 10);
+        }
+
+        fontSize /= 2;
+        return {
+          width: strLen(text) * fontSize,
+        };
       };
-    };
+    }
   }
 
   _initEvent() {
     this.event = {};
     const eventNames = [
       {
-        wxName: 'touchStart',
+        eName: 'touchStart',
         ecName: 'mousedown',
       },
       {
-        wxName: 'touchMove',
+        eName: 'touchMove',
         ecName: 'mousemove',
       },
       {
-        wxName: 'touchEnd',
+        eName: 'touchEnd',
         ecName: 'mouseup',
       },
       {
-        wxName: 'touchEnd',
+        eName: 'touchEnd',
         ecName: 'click',
       },
     ];
 
     eventNames.forEach((name) => {
-      this.event[name.wxName] = (e) => {
+      this.event[name.eName] = (e) => {
         const touch = e.touches[0];
         this.chart.getZr().handler.dispatch(name.ecName, {
-          zrX: name.wxName === 'tap' ? touch.clientX : touch.x,
-          zrY: name.wxName === 'tap' ? touch.clientY : touch.y,
+          zrX: name.eName === 'tap' ? touch.clientX : touch.x,
+          zrY: name.eName === 'tap' ? touch.clientY : touch.y,
         });
       };
     });
