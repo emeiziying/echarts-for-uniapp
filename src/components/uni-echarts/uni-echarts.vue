@@ -68,6 +68,10 @@ export default {
   },
   onReady: function() {
     if (!this.ec) {
+      console.warn(
+        '组件需绑定 ec 变量，例：<ec-canvas id="mychart-dom-bar" ' +
+          'canvas-id="mychart-bar" ec="{{ ec }}"></ec-canvas>'
+      );
       return;
     }
     if (!this.ec.lazyLoad) {
@@ -76,14 +80,6 @@ export default {
   },
   beforeDestroy() {
     this.chart && this.chart.dispose();
-  },
-  computed: {
-    ww() {
-      return this.w0;
-    },
-    hh() {
-      return this.chart ? this.chart.height : 0;
-    },
   },
   methods: {
     compareVersion(v1, v2) {
@@ -126,8 +122,6 @@ export default {
       const lowestVersion = '1.9.91';
       // #endif
 
-      console.log(version);
-
       let canUseNewCanvas = this.compareVersion(version, baseVersion) >= 0;
       if (this.forceUseOldCanvas) {
         if (canUseNewCanvas) console.warn('开发者强制使用旧canvas,建议关闭');
@@ -161,17 +155,18 @@ export default {
       // 1.9.91 <= version < 2.9.0：原来的方式初始化
       this.ctx = uni.createCanvasContext(this.canvasId, this);
       const canvas = new EcCanvas(this.ctx, this.canvasId, false);
-      const that = this;
+
+      // #ifdef MP-WEIXIN
+      const canvasDpr = 1;
+      // #endif
+
+      // #ifdef MP-ALIPAY
+      const canvasDpr = uni.getSystemInfoSync().pixelRatio || 2;
+      // #endif
+
       echarts.setCanvasCreator(() => {
         return canvas;
       });
-
-      // #ifdef MP-WEIXIN
-      const canvasDpr = 1; // 微信旧的canvas不能传入dpr
-      // #endif
-      // #ifndef MP-WEIXIN
-      const canvasDpr = uni.getSystemInfoSync().pixelRatio || 2; // 微信旧的canvas不能传入dpr
-      // #endif
 
       var query = uni.createSelectorQuery().in(this);
       query
@@ -181,8 +176,8 @@ export default {
           const canvasHeight = res.height;
 
           this.canvasDpr = canvasDpr;
-          this.canvasWidth = canvasWidth * canvasDpr;
-          this.canvasHeight = canvasHeight * canvasDpr;
+          this.canvasWidth = Math.floor(canvasWidth * canvasDpr);
+          this.canvasHeight = Math.floor(canvasHeight * canvasDpr);
 
           if (typeof callback === 'function') {
             this.chart = callback({
@@ -192,18 +187,18 @@ export default {
               canvasHeight,
               canvasDpr,
             });
-          } else if (that.ec) {
-            this.chart = that.initChart(
+          } else if (this.ec) {
+            this.chart = this.initChart(
               canvas,
               canvasWidth,
               canvasHeight,
               canvasDpr
             );
           } else {
-            that.triggerEvent('init', {
+            this.triggerEvent('init', {
               canvas: canvas,
-              width: res.width,
-              height: res.height,
+              width: canvasWidth,
+              height: canvasHeight,
               devicePixelRatio: canvasDpr, // 增加了dpr，可方便外面echarts.init
             });
           }
@@ -211,7 +206,6 @@ export default {
         .exec();
     },
     initByNewWay(callback) {
-      const that = this;
       // version >= 2.9.0：使用新的方式初始化
       const query = uni.createSelectorQuery().in(this);
       query
@@ -226,8 +220,7 @@ export default {
           const canvasWidth = res[0].width;
           const canvasHeight = res[0].height;
           const ctx = canvasNode.getContext('2d');
-          const canvas = new EcCanvas(ctx, that.canvasId, true, canvasNode);
-
+          const canvas = new EcCanvas(ctx, this.canvasId, true, canvasNode);
           echarts.setCanvasCreator(() => {
             return canvas;
           });
@@ -239,15 +232,15 @@ export default {
               canvasHeight,
               canvasDpr,
             });
-          } else if (that.ec) {
-            this.chart = that.initChart(
+          } else if (this.ec) {
+            this.chart = this.initChart(
               canvas,
               canvasWidth,
               canvasHeight,
               canvasDpr
             );
           } else {
-            that.triggerEvent('init', {
+            this.triggerEvent('init', {
               canvas: canvas,
               width: canvasWidth,
               height: canvasHeight,
@@ -291,6 +284,7 @@ export default {
     wrapTouch(event) {
       for (let i = 0; i < event.touches.length; ++i) {
         const touch = event.touches[i];
+
         touch.offsetX = touch.x;
         touch.offsetY = touch.y;
       }
@@ -313,6 +307,7 @@ export default {
         touch.y = touch.pageY - offsetTop;
 
         var handler = this.chart.getZr().handler;
+
         if (handler) {
           handler.dispatch('mousedown', {
             zrX: touch.x,
@@ -382,14 +377,7 @@ export default {
         }
       }
     },
-    longtap(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    },
     initChart(canvas, width, height, canvasDpr) {
-      console.log(width, height, canvasDpr);
-
       this.chart = echarts.init(canvas, null, {
         width: width,
         height: height,
