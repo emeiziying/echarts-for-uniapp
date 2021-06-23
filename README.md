@@ -1,19 +1,3 @@
-# my-project
+# 支持 微信小程序 钉钉小程序 支付宝小程序
 
-## Project setup
-```
-yarn install
-```
-
-### Compiles and hot-reloads for development
-```
-yarn serve
-```
-
-### Compiles and minifies for production
-```
-yarn build
-```
-
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
+为了规避 longpress,把事件放在包裹的 view 中
